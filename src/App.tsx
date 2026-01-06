@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import './App.css'
-import GameBoard from './components/GameBoard.tsx'
+import GameBoard from './components/GameBoard'
 
 const GRID_SIZE = 10
 
@@ -49,6 +49,9 @@ function App() {
   const [winner, setWinner] = useState<Turn | null>(null)
   const [currentTurn, setCurrentTurn] = useState<Turn>('player')
   const [message, setMessage] = useState<string>('Place your ships!')
+
+  // Suppress unused variable warning - winner is set for future use
+  void winner
 
   useEffect(() => {
     initializeGame()
