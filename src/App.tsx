@@ -1,9 +1,15 @@
 import { useState, useEffect } from 'react'
 import './App.css'
-import GameBoard from './components/GameBoard'
+import GameBoard from './components/GameBoard.tsx'
 
 const GRID_SIZE = 10
-const SHIPS = [
+
+interface ShipTemplate {
+  name: string
+  size: number
+}
+
+const SHIPS: ShipTemplate[] = [
   { name: 'Carrier', size: 5 },
   { name: 'Battleship', size: 4 },
   { name: 'Cruiser', size: 3 },
@@ -11,22 +17,44 @@ const SHIPS = [
   { name: 'Destroyer', size: 2 }
 ]
 
+interface Cell {
+  hasShip: boolean
+  isHit: boolean
+  isMiss: boolean
+  shipId: number | null
+}
+
+type Board = Cell[][]
+
+interface Position {
+  row: number
+  col: number
+}
+
+interface Ship extends ShipTemplate {
+  id: number
+  positions: Position[]
+  hits: number
+}
+
+type Turn = 'player' | 'computer'
+
 function App() {
-  const [playerBoard, setPlayerBoard] = useState([])
-  const [computerBoard, setComputerBoard] = useState([])
-  const [playerShips, setPlayerShips] = useState([])
-  const [computerShips, setComputerShips] = useState([])
-  const [gameStarted, setGameStarted] = useState(false)
-  const [gameOver, setGameOver] = useState(false)
-  const [winner, setWinner] = useState(null)
-  const [currentTurn, setCurrentTurn] = useState('player')
-  const [message, setMessage] = useState('Place your ships!')
+  const [playerBoard, setPlayerBoard] = useState<Board>([])
+  const [computerBoard, setComputerBoard] = useState<Board>([])
+  const [playerShips, setPlayerShips] = useState<Ship[]>([])
+  const [computerShips, setComputerShips] = useState<Ship[]>([])
+  const [gameStarted, setGameStarted] = useState<boolean>(false)
+  const [gameOver, setGameOver] = useState<boolean>(false)
+  const [winner, setWinner] = useState<Turn | null>(null)
+  const [currentTurn, setCurrentTurn] = useState<Turn>('player')
+  const [message, setMessage] = useState<string>('Place your ships!')
 
   useEffect(() => {
     initializeGame()
   }, [])
 
-  const createEmptyBoard = () => {
+  const createEmptyBoard = (): Board => {
     return Array(GRID_SIZE).fill(null).map(() => 
       Array(GRID_SIZE).fill(null).map(() => ({
         hasShip: false,
@@ -37,7 +65,7 @@ function App() {
     )
   }
 
-  const initializeGame = () => {
+  const initializeGame = (): void => {
     const newPlayerBoard = createEmptyBoard()
     const newComputerBoard = createEmptyBoard()
     
@@ -54,9 +82,9 @@ function App() {
     setMessage('Place your ships!')
   }
 
-  const placeShipsRandomly = (board) => {
-    const ships = []
-    const newBoard = JSON.parse(JSON.stringify(board))
+  const placeShipsRandomly = (board: Board): Ship[] => {
+    const ships: Ship[] = []
+    const newBoard = JSON.parse(JSON.stringify(board)) as Board
 
     SHIPS.forEach((ship, shipId) => {
       let placed = false
@@ -66,7 +94,7 @@ function App() {
         const col = Math.floor(Math.random() * GRID_SIZE)
 
         if (canPlaceShip(newBoard, row, col, ship.size, horizontal)) {
-          const positions = []
+          const positions: Position[] = []
           for (let i = 0; i < ship.size; i++) {
             const r = horizontal ? row : row + i
             const c = horizontal ? col + i : col
@@ -82,7 +110,7 @@ function App() {
     return ships
   }
 
-  const canPlaceShip = (board, row, col, size, horizontal) => {
+  const canPlaceShip = (board: Board, row: number, col: number, size: number, horizontal: boolean): boolean => {
     if (horizontal) {
       if (col + size > GRID_SIZE) return false
       for (let i = 0; i < size; i++) {
@@ -97,7 +125,7 @@ function App() {
     return true
   }
 
-  const autoPlacePlayerShips = () => {
+  const autoPlacePlayerShips = (): void => {
     const newBoard = createEmptyBoard()
     const ships = placeShipsRandomly(newBoard)
     setPlayerBoard(newBoard)
@@ -106,7 +134,7 @@ function App() {
     setMessage("Game started! Your turn - attack the computer's board!")
   }
 
-  const handleCellClick = (row, col, isPlayerBoard) => {
+  const handleCellClick = (row: number, col: number, isPlayerBoard: boolean): void => {
     if (!gameStarted || gameOver) return
     if (isPlayerBoard) return // Can't click own board
     if (currentTurn !== 'player') return
@@ -117,7 +145,7 @@ function App() {
     const newBoard = [...computerBoard]
     const newShips = [...computerShips]
 
-    if (cell.hasShip) {
+    if (cell.hasShip && cell.shipId !== null) {
       newBoard[row][col] = { ...cell, isHit: true }
       const ship = newShips[cell.shipId]
       ship.hits++
@@ -146,8 +174,8 @@ function App() {
     }
   }
 
-  const computerTurn = () => {
-    let row, col
+  const computerTurn = (): void => {
+    let row: number, col: number
     do {
       row = Math.floor(Math.random() * GRID_SIZE)
       col = Math.floor(Math.random() * GRID_SIZE)
@@ -157,7 +185,7 @@ function App() {
     const newShips = [...playerShips]
     const cell = newBoard[row][col]
 
-    if (cell.hasShip) {
+    if (cell.hasShip && cell.shipId !== null) {
       newBoard[row][col] = { ...cell, isHit: true }
       const ship = newShips[cell.shipId]
       ship.hits++
@@ -187,7 +215,7 @@ function App() {
     }
   }
 
-  const checkWin = (ships) => {
+  const checkWin = (ships: Ship[]): boolean => {
     return ships.every(ship => ship.hits === ship.size)
   }
 

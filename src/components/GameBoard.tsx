@@ -1,11 +1,27 @@
 import './GameBoard.css'
 
-const GameBoard = ({ board, onCellClick, isPlayerBoard, hideShips }) => {
-  const handleClick = (row, col) => {
+interface Cell {
+  hasShip: boolean
+  isHit: boolean
+  isMiss: boolean
+  shipId: number | null
+}
+
+type Board = Cell[][]
+
+interface GameBoardProps {
+  board: Board
+  onCellClick: (row: number, col: number, isPlayerBoard: boolean) => void
+  isPlayerBoard: boolean
+  hideShips: boolean
+}
+
+const GameBoard = ({ board, onCellClick, isPlayerBoard, hideShips }: GameBoardProps) => {
+  const handleClick = (row: number, col: number): void => {
     onCellClick(row, col, isPlayerBoard)
   }
 
-  const getCellClass = (cell) => {
+  const getCellClass = (cell: Cell): string => {
     const classes = ['cell']
     
     if (cell.isHit) {
