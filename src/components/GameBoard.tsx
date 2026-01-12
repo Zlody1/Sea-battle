@@ -9,19 +9,53 @@ interface Cell {
 
 type Board = Cell[][]
 
+interface Position {
+  row: number
+  col: number
+}
+
 interface GameBoardProps {
   board: Board
   onCellClick: (row: number, col: number, isPlayerBoard: boolean) => void
   isPlayerBoard: boolean
   hideShips: boolean
+  onCellHover?: (row: number, col: number) => void
+  onBoardLeave?: () => void
+  previewCells?: Position[]
+  previewValid?: boolean
 }
 
-const GameBoard = ({ board, onCellClick, isPlayerBoard, hideShips }: GameBoardProps) => {
+const GameBoard = ({ 
+  board, 
+  onCellClick, 
+  isPlayerBoard, 
+  hideShips,
+  onCellHover,
+  onBoardLeave,
+  previewCells = [],
+  previewValid = true
+}: GameBoardProps) => {
   const handleClick = (row: number, col: number): void => {
     onCellClick(row, col, isPlayerBoard)
   }
 
-  const getCellClass = (cell: Cell): string => {
+  const handleMouseEnter = (row: number, col: number): void => {
+    if (onCellHover) {
+      onCellHover(row, col)
+    }
+  }
+
+  const handleMouseLeave = (): void => {
+    if (onBoardLeave) {
+      onBoardLeave()
+    }
+  }
+
+  const isPreviewCell = (row: number, col: number): boolean => {
+    return previewCells.some(pos => pos.row === row && pos.col === col)
+  }
+
+  const getCellClass = (cell: Cell, row: number, col: number): string => {
     const classes = ['cell']
     
     if (cell.isHit) {
@@ -36,11 +70,15 @@ const GameBoard = ({ board, onCellClick, isPlayerBoard, hideShips }: GameBoardPr
       classes.push('clickable')
     }
 
+    if (isPlayerBoard && isPreviewCell(row, col)) {
+      classes.push(previewValid ? 'preview-valid' : 'preview-invalid')
+    }
+
     return classes.join(' ')
   }
 
   return (
-    <div className="game-board">
+    <div className="game-board" onMouseLeave={handleMouseLeave}>
       <div className="board-labels">
         <div className="corner-label"></div>
         {Array.from({ length: 10 }, (_, i) => (
@@ -54,8 +92,9 @@ const GameBoard = ({ board, onCellClick, isPlayerBoard, hideShips }: GameBoardPr
           {row.map((cell, colIndex) => (
             <div
               key={`${rowIndex}-${colIndex}`}
-              className={getCellClass(cell)}
+              className={getCellClass(cell, rowIndex, colIndex)}
               onClick={() => handleClick(rowIndex, colIndex)}
+              onMouseEnter={() => handleMouseEnter(rowIndex, colIndex)}
             >
               {cell.isHit && <span className="hit-marker">💥</span>}
               {cell.isMiss && <span className="miss-marker">○</span>}

@@ -57,6 +57,27 @@ h1 {
 
 .setup-controls {
   margin-bottom: 30px;
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.placement-info {
+  background: #e3f2fd;
+  padding: 15px 25px;
+  border-radius: 10px;
+  color: #1976d2;
+}
+
+.placement-info p {
+  margin: 5px 0;
+  font-size: 1.1rem;
+}
+
+.placement-info strong {
+  color: #0d47a1;
 }
 
 .btn-primary {
@@ -78,6 +99,28 @@ h1 {
 }
 
 .btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  border: none;
+  padding: 12px 30px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
+}
+
+.btn-secondary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(245, 87, 108, 0.6);
+}
+
+.btn-secondary:active {
   transform: translateY(0);
 }
 
