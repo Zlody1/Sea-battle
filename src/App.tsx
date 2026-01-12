@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import './App.css'
 import GameBoard from './components/GameBoard'
+import { useMultiplayer } from './hooks/useMultiplayer'
 
 const GRID_SIZE = 10
 
@@ -38,8 +39,12 @@ interface Ship extends ShipTemplate {
 }
 
 type Turn = 'player' | 'computer'
+type GameMode = 'pvp' | 'pvc' | 'online' | null
 
 function App() {
+  const multiplayer = useMultiplayer()
+  
+  const [gameMode, setGameMode] = useState<GameMode>(null)
   const [playerBoard, setPlayerBoard] = useState<Board>([])
   const [computerBoard, setComputerBoard] = useState<Board>([])
   const [playerShips, setPlayerShips] = useState<Ship[]>([])
@@ -48,13 +53,20 @@ function App() {
   const [gameOver, setGameOver] = useState<boolean>(false)
   const [winner, setWinner] = useState<Turn | null>(null)
   const [currentTurn, setCurrentTurn] = useState<Turn>('player')
-  const [message, setMessage] = useState<string>('Place your ships!')
+  const [message, setMessage] = useState<string>('Select game mode!')
+  const [showingTransition, setShowingTransition] = useState<boolean>(false)
+  const [player1Ready, setPlayer1Ready] = useState<boolean>(false)
+  const [player2Ready, setPlayer2Ready] = useState<boolean>(false)
+  const [gameIdInput, setGameIdInput] = useState<string>('')
   
   // Manual placement states
   const [isPlacingManually, setIsPlacingManually] = useState<boolean>(false)
-  const [currentShipIndex, setCurrentShipIndex] = useState<number>(0)
-  const [shipOrientation, setShipOrientation] = useState<'horizontal' | 'vertical'>('horizontal')
-  const [previewPosition, setPreviewPosition] = useState<{ row: number; col: number } | null>(null)
+  const [player1ShipIndex, setPlayer1ShipIndex] = useState<number>(0)
+  const [player2ShipIndex, setPlayer2ShipIndex] = useState<number>(0)
+  const [player1Orientation, setPlayer1Orientation] = useState<'horizontal' | 'vertical'>('horizontal')
+  const [player2Orientation, setPlayer2Orientation] = useState<'horizontal' | 'vertical'>('horizontal')
+  const [player1PreviewPosition, setPlayer1PreviewPosition] = useState<{ row: number; col: number } | null>(null)
+  const [player2PreviewPosition, setPlayer2PreviewPosition] = useState<{ row: number; col: number } | null>(null)
 
   // Computer AI states
   const [lastHit, setLastHit] = useState<Position | null>(null)
@@ -67,6 +79,96 @@ function App() {
   useEffect(() => {
     initializeGame()
   }, [])
+
+  // Multiplayer event listeners
+  useEffect(() => {
+    if (!multiplayer.socket || gameMode !== 'online') return
+
+    const handleGameStarted = () => {
+      setGameStarted(true)
+      setPlayer1Ready(true)
+      setPlayer2Ready(true)
+      setMessage(multiplayer.playerNumber === 1 ? "Game started! Your turn!" : "Game started! Opponent's turn")
+    }
+
+    const handleAttackResult = (result: any) => {
+      const newBoard = [...computerBoard]
+      newBoard[result.row][result.col] = {
+        ...newBoard[result.row][result.col],
+        isHit: result.isHit,
+        isMiss: !result.isHit
+      }
+      setComputerBoard(newBoard)
+
+      if (result.gameOver) {
+        setGameOver(true)
+        setWinner('player')
+        setMessage('🎉 You won! All enemy ships destroyed!')
+      } else if (result.shipSunk) {
+        setMessage(`You sunk the ${result.sunkShipName}! Take another shot!`)
+      } else if (result.isHit) {
+        setMessage('Hit! Take another shot!')
+      } else {
+        setMessage("Miss! Opponent's turn...")
+      }
+    }
+
+    const handleAttacked = (result: any) => {
+      const newBoard = [...playerBoard]
+      const newShips = [...playerShips]
+      
+      newBoard[result.row][result.col] = {
+        ...newBoard[result.row][result.col],
+        isHit: result.isHit,
+        isMiss: !result.isHit
+      }
+      
+      if (result.isHit && newBoard[result.row][result.col].shipId !== null) {
+        const shipId = newBoard[result.row][result.col].shipId!
+        newShips[shipId].hits = (newShips[shipId].hits || 0) + 1
+      }
+      
+      setPlayerBoard(newBoard)
+      setPlayerShips(newShips)
+
+      if (result.gameOver) {
+        setGameOver(true)
+        setWinner('computer')
+        setMessage('💀 Game Over! Opponent won!')
+      } else if (result.shipSunk) {
+        setMessage(`Opponent sunk your ${result.sunkShipName}!`)
+      } else if (result.isHit) {
+        setMessage('Opponent hit your ship!')
+      } else {
+        setMessage('Opponent missed! Your turn!')
+      }
+    }
+
+    const handleTurnChanged = ({ currentTurn: turn }: any) => {
+      const isMyTurn = (turn === 'player1' && multiplayer.playerNumber === 1) ||
+                       (turn === 'player2' && multiplayer.playerNumber === 2)
+      setCurrentTurn(isMyTurn ? 'player' : 'computer')
+    }
+
+    multiplayer.socket.on('gameStarted', handleGameStarted)
+    multiplayer.socket.on('attackResult', handleAttackResult)
+    multiplayer.socket.on('attacked', handleAttacked)
+    multiplayer.socket.on('turnChanged', handleTurnChanged)
+
+    return () => {
+      multiplayer.socket?.off('gameStarted', handleGameStarted)
+      multiplayer.socket?.off('attackResult', handleAttackResult)
+      multiplayer.socket?.off('attacked', handleAttacked)
+      multiplayer.socket?.off('turnChanged', handleTurnChanged)
+    }
+  }, [multiplayer.socket, gameMode, computerBoard, playerBoard, playerShips, multiplayer.playerNumber])
+
+  // Update multiplayer server when ships change
+  useEffect(() => {
+    if (gameMode === 'online' && playerShips.length > 0) {
+      multiplayer.updateShips(playerShips, playerBoard)
+    }
+  }, [playerShips, playerBoard, gameMode])
 
   const createEmptyBoard = (): Board => {
     return Array(GRID_SIZE).fill(null).map(() => 
@@ -83,23 +185,57 @@ function App() {
     const newPlayerBoard = createEmptyBoard()
     const newComputerBoard = createEmptyBoard()
     
-    const computerResult = placeShipsRandomly(newComputerBoard)
-    
     setPlayerBoard(newPlayerBoard)
-    setComputerBoard(computerResult.board)
+    setComputerBoard(newComputerBoard)
     setPlayerShips([])
-    setComputerShips(computerResult.ships)
+    setComputerShips([])
     setGameStarted(false)
     setGameOver(false)
     setWinner(null)
     setCurrentTurn('player')
-    setMessage('Place your ships!')
+    setMessage('Select game mode!')
     setIsPlacingManually(false)
-    setCurrentShipIndex(0)
-    setShipOrientation('horizontal')
-    setPreviewPosition(null)
+    setPlayer1ShipIndex(0)
+    setPlayer2ShipIndex(0)
+    setPlayer1Orientation('horizontal')
+    setPlayer2Orientation('horizontal')
+    setPlayer1PreviewPosition(null)
+    setPlayer2PreviewPosition(null)
     setLastHit(null)
     setTargetQueue([])
+    setGameMode(null)
+    setShowingTransition(false)
+    setPlayer1Ready(false)
+    setPlayer2Ready(false)
+  }
+
+  const selectGameMode = (mode: GameMode): void => {
+    setGameMode(mode)
+    const newPlayerBoard = createEmptyBoard()
+    const newComputerBoard = createEmptyBoard()
+    
+    setPlayerBoard(newPlayerBoard)
+    setComputerBoard(newComputerBoard)
+    setPlayerShips([])
+    setComputerShips([])
+    
+    if (mode === 'pvc') {
+      const computerResult = placeShipsRandomly(newComputerBoard)
+      setComputerBoard(computerResult.board)
+      setComputerShips(computerResult.ships)
+      setMessage('Place your ships!')
+    } else if (mode === 'pvp') {
+      setMessage('Player 1: Place your ships!')
+    } else if (mode === 'online') {
+      setMessage('Enter a Game ID to create or join a game')
+    }
+  }
+
+  const joinOnlineGame = (): void => {
+    if (gameIdInput.trim()) {
+      multiplayer.joinGame(gameIdInput.trim())
+      setMessage(`Joining game ${gameIdInput}... Waiting for opponent...`)
+    }
   }
 
   const placeShipsRandomly = (board: Board): { board: Board; ships: Ship[] } => {
@@ -148,32 +284,60 @@ function App() {
   const autoPlacePlayerShips = (): void => {
     const newBoard = createEmptyBoard()
     const result = placeShipsRandomly(newBoard)
-    setPlayerBoard(result.board)
-    setPlayerShips(result.ships)
-    setGameStarted(true)
-    setMessage("Game started! Your turn - attack the computer's board!")
+    
+    if (gameMode === 'pvp') {
+      if (playerShips.length === 0) {
+        // Player 1 auto-placing
+        setPlayerBoard(result.board)
+        setPlayerShips(result.ships)
+        setMessage('Player 2: Place your ships!')
+      } else {
+        // Player 2 auto-placing
+        setComputerBoard(result.board)
+        setComputerShips(result.ships)
+        setGameStarted(true)
+        setMessage('Game started! Player 1\'s turn - attack Player 2\'s board!')
+      }
+    } else {
+      // PvC mode
+      setPlayerBoard(result.board)
+      setPlayerShips(result.ships)
+      setGameStarted(true)
+      setMessage("Game started! Your turn - attack the computer's board!")
+    }
   }
 
   const startManualPlacement = (): void => {
     setIsPlacingManually(true)
-    setCurrentShipIndex(0)
+    setPlayer1ShipIndex(0)
+    setPlayer2ShipIndex(0)
     setPlayerBoard(createEmptyBoard())
     setPlayerShips([])
-    setMessage(`Place your ${SHIPS[0].name} (${SHIPS[0].size} cells). Click to rotate, then click on board to place.`)
+    
+    if (gameMode === 'pvp') {
+      setComputerBoard(createEmptyBoard())
+      setComputerShips([])
+      setMessage('Both players: Place your ships! Click boards to place, click rotate buttons to change orientation.')
+    } else {
+      setMessage(`Place your ${SHIPS[0].name} (${SHIPS[0].size} cells). Click to rotate, then click on board to place.`)
+    }
   }
 
-  const toggleOrientation = (): void => {
-    setShipOrientation(prev => prev === 'horizontal' ? 'vertical' : 'horizontal')
+  const togglePlayer1Orientation = (): void => {
+    setPlayer1Orientation(prev => prev === 'horizontal' ? 'vertical' : 'horizontal')
   }
 
-  const handleManualPlacement = (row: number, col: number): void => {
-    if (!isPlacingManually || currentShipIndex >= SHIPS.length) return
+  const togglePlayer2Orientation = (): void => {
+    setPlayer2Orientation(prev => prev === 'horizontal' ? 'vertical' : 'horizontal')
+  }
 
-    const ship = SHIPS[currentShipIndex]
-    const horizontal = shipOrientation === 'horizontal'
+  const handlePlayer1Placement = (row: number, col: number): void => {
+    if (!isPlacingManually || player1ShipIndex >= SHIPS.length) return
+
+    const ship = SHIPS[player1ShipIndex]
+    const horizontal = player1Orientation === 'horizontal'
 
     if (!canPlaceShip(playerBoard, row, col, ship.size, horizontal)) {
-      setMessage('Cannot place ship here! Try another position.')
       return
     }
 
@@ -183,56 +347,183 @@ function App() {
     for (let i = 0; i < ship.size; i++) {
       const r = horizontal ? row : row + i
       const c = horizontal ? col + i : col
-      newBoard[r][c] = { ...newBoard[r][c], hasShip: true, shipId: currentShipIndex }
+      newBoard[r][c] = { ...newBoard[r][c], hasShip: true, shipId: player1ShipIndex }
       positions.push({ row: r, col: c })
     }
 
-    const newShip: Ship = { ...ship, id: currentShipIndex, positions, hits: 0 }
+    const newShip: Ship = { ...ship, id: player1ShipIndex, positions, hits: 0 }
     const newShips = [...playerShips, newShip]
-
     setPlayerBoard(newBoard)
     setPlayerShips(newShips)
-    setPreviewPosition(null)
+    setPlayer1PreviewPosition(null)
 
-    const nextIndex = currentShipIndex + 1
-    if (nextIndex < SHIPS.length) {
-      setCurrentShipIndex(nextIndex)
-      setMessage(`Place your ${SHIPS[nextIndex].name} (${SHIPS[nextIndex].size} cells). Click to rotate, then click on board to place.`)
+    const nextIndex = player1ShipIndex + 1
+    setPlayer1ShipIndex(nextIndex)
+    
+    // Check if both players are done
+    if (gameMode === 'pvp') {
+      if (nextIndex >= SHIPS.length && player2ShipIndex >= SHIPS.length) {
+        setIsPlacingManually(false)
+        setMessage('Both players: Press Ready when ready to start!')
+      } else if (nextIndex >= SHIPS.length) {
+        setMessage(`Player 1 done! Waiting for Player 2 (${player2ShipIndex}/${SHIPS.length} ships placed)`)
+      } else {
+        setMessage(`Player 1: ${nextIndex}/${SHIPS.length} ships | Player 2: ${player2ShipIndex}/${SHIPS.length} ships`)
+      }
+    } else if (gameMode === 'online') {
+      if (nextIndex >= SHIPS.length) {
+        setIsPlacingManually(false)
+        setMessage(multiplayer.opponentConnected 
+          ? 'Ships placed! Press Ready when ready to start!' 
+          : 'Ships placed! Waiting for opponent to join...')
+      }
     } else {
+      if (nextIndex >= SHIPS.length) {
+        setIsPlacingManually(false)
+        setGameStarted(true)
+        setMessage("All ships placed! Your turn - attack the computer's board!")
+      }
+    }
+  }
+
+  const handlePlayer2Placement = (row: number, col: number): void => {
+    if (!isPlacingManually || player2ShipIndex >= SHIPS.length || gameMode !== 'pvp') return
+
+    const ship = SHIPS[player2ShipIndex]
+    const horizontal = player2Orientation === 'horizontal'
+
+    if (!canPlaceShip(computerBoard, row, col, ship.size, horizontal)) {
+      return
+    }
+
+    const newBoard = JSON.parse(JSON.stringify(computerBoard)) as Board
+    const positions: Position[] = []
+
+    for (let i = 0; i < ship.size; i++) {
+      const r = horizontal ? row : row + i
+      const c = horizontal ? col + i : col
+      newBoard[r][c] = { ...newBoard[r][c], hasShip: true, shipId: player2ShipIndex }
+      positions.push({ row: r, col: c })
+    }
+
+    const newShip: Ship = { ...ship, id: player2ShipIndex, positions, hits: 0 }
+    const newShips = [...computerShips, newShip]
+    setComputerBoard(newBoard)
+    setComputerShips(newShips)
+    setPlayer2PreviewPosition(null)
+
+    const nextIndex = player2ShipIndex + 1
+    setPlayer2ShipIndex(nextIndex)
+    
+    // Check if both players are done
+    if (nextIndex >= SHIPS.length && player1ShipIndex >= SHIPS.length) {
       setIsPlacingManually(false)
+      setMessage('Both players: Press Ready when ready to start!')
+    } else if (nextIndex >= SHIPS.length) {
+      setMessage(`Player 2 done! Waiting for Player 1 (${player1ShipIndex}/${SHIPS.length} ships placed)`)
+    } else {
+      setMessage(`Player 1: ${player1ShipIndex}/${SHIPS.length} ships | Player 2: ${nextIndex}/${SHIPS.length} ships`)
+    }
+  }
+
+  const handlePlayer1BoardHover = (row: number, col: number): void => {
+    if (isPlacingManually && player1ShipIndex < SHIPS.length) {
+      setPlayer1PreviewPosition({ row, col })
+    }
+  }
+
+  const handlePlayer2BoardHover = (row: number, col: number): void => {
+    if (isPlacingManually && player2ShipIndex < SHIPS.length && gameMode === 'pvp') {
+      setPlayer2PreviewPosition({ row, col })
+    }
+  }
+  const handlePlayer1Ready = (): void => {
+    if (gameMode === 'online') {
+      multiplayer.setReady()
+      setPlayer1Ready(true)
+      setMessage(multiplayer.opponentReady ? 'Starting game...' : 'Waiting for opponent...')
+    } else {
+      setPlayer1Ready(true)
+      if (player2Ready) {
+        setGameStarted(true)
+        setMessage("Game started! Player 1's turn - attack Player 2's board!")
+      } else {
+        setMessage('Player 1 is ready! Waiting for Player 2...')
+      }
+    }
+  }
+
+  const handlePlayer2Ready = (): void => {
+    setPlayer2Ready(true)
+    if (player1Ready) {
       setGameStarted(true)
-      setMessage("All ships placed! Your turn - attack the computer's board!")
+      setMessage("Game started! Player 1's turn - attack Player 2's board!")
+    } else {
+      setMessage('Player 2 is ready! Waiting for Player 1...')
+    }
+  }
+  const handleTurnTransition = (): void => {
+    setShowingTransition(false)
+    // Computer's turn in PvC mode
+    if (gameMode === 'pvc' && currentTurn === 'computer') {
+      setTimeout(computerTurn, 1000)
     }
   }
 
-  const handleBoardHover = (row: number, col: number): void => {
-    if (isPlacingManually && currentShipIndex < SHIPS.length) {
-      setPreviewPosition({ row, col })
-    }
+  const handlePlayer1BoardLeave = (): void => {
+    setPlayer1PreviewPosition(null)
   }
 
-  const handleBoardLeave = (): void => {
-    setPreviewPosition(null)
+  const handlePlayer2BoardLeave = (): void => {
+    setPlayer2PreviewPosition(null)
   }
 
-  const isValidPreview = (row: number, col: number): boolean => {
-    if (!isPlacingManually || currentShipIndex >= SHIPS.length) return false
-    const ship = SHIPS[currentShipIndex]
-    const horizontal = shipOrientation === 'horizontal'
+  const isValidPlayer1Preview = (row: number, col: number): boolean => {
+    if (!isPlacingManually || player1ShipIndex >= SHIPS.length) return false
+    const ship = SHIPS[player1ShipIndex]
+    const horizontal = player1Orientation === 'horizontal'
     return canPlaceShip(playerBoard, row, col, ship.size, horizontal)
   }
 
-  const getPreviewCells = (): Position[] => {
-    if (!previewPosition || !isPlacingManually || currentShipIndex >= SHIPS.length) {
+  const isValidPlayer2Preview = (row: number, col: number): boolean => {
+    if (!isPlacingManually || player2ShipIndex >= SHIPS.length) return false
+    const ship = SHIPS[player2ShipIndex]
+    const horizontal = player2Orientation === 'horizontal'
+    return canPlaceShip(computerBoard, row, col, ship.size, horizontal)
+  }
+
+  const getPlayer1PreviewCells = (): Position[] => {
+    if (!player1PreviewPosition || !isPlacingManually || player1ShipIndex >= SHIPS.length) {
       return []
     }
 
-    const ship = SHIPS[currentShipIndex]
-    const horizontal = shipOrientation === 'horizontal'
-    const { row, col } = previewPosition
+    const ship = SHIPS[player1ShipIndex]
+    const horizontal = player1Orientation === 'horizontal'
+    const { row, col } = player1PreviewPosition
     const cells: Position[] = []
 
-    if (!isValidPreview(row, col)) return []
+    if (!isValidPlayer1Preview(row, col)) return []
+
+    for (let i = 0; i < ship.size; i++) {
+      const r = horizontal ? row : row + i
+      const c = horizontal ? col + i : col
+      cells.push({ row: r, col: c })
+    }
+
+    return cells
+  }
+
+  const getPlayer2PreviewCells = (): Position[] => {
+    if (!player2PreviewPosition || !isPlacingManually || player2ShipIndex >= SHIPS.length || gameMode !== 'pvp') {
+      return []
+    }
+
+    const ship = SHIPS[player2ShipIndex]
+    const horizontal = player2Orientation === 'horizontal'
+    const { row, col } = player2PreviewPosition
+    const cells: Position[] = []
+
+    if (!isValidPlayer2Preview(row, col)) return []
 
     for (let i = 0; i < ship.size; i++) {
       const r = horizontal ? row : row + i
@@ -245,8 +536,12 @@ function App() {
 
   const handleCellClick = (row: number, col: number, isPlayerBoard: boolean): void => {
     // Handle manual ship placement
-    if (isPlacingManually && isPlayerBoard) {
-      handleManualPlacement(row, col)
+    if (isPlacingManually) {
+      if (isPlayerBoard) {
+        handlePlayer1Placement(row, col)
+      } else if (gameMode === 'pvp') {
+        handlePlayer2Placement(row, col)
+      }
       return
     }
 
@@ -258,6 +553,13 @@ function App() {
     const cell = computerBoard[row][col]
     if (cell.isHit || cell.isMiss) return // Already attacked
 
+    // Online multiplayer mode
+    if (gameMode === 'online') {
+      multiplayer.sendAttack(row, col)
+      return
+    }
+
+    // Local modes (pvp and pvc)
     const newBoard = [...computerBoard]
     const newShips = [...computerShips]
 
@@ -266,8 +568,9 @@ function App() {
       const ship = newShips[cell.shipId]
       ship.hits++
       
+      const playerName = gameMode === 'pvp' ? 'Player 1' : 'You'
       if (ship.hits === ship.size) {
-        setMessage(`You sunk the ${ship.name}!`)
+        setMessage(`${playerName} sunk the ${ship.name}!`)
       } else {
         setMessage('Hit! Take another shot!')
       }
@@ -278,19 +581,35 @@ function App() {
       if (checkWin(newShips)) {
         setGameOver(true)
         setWinner('player')
-        setMessage('🎉 You won! All enemy ships destroyed!')
+        if (gameMode === 'pvp') {
+          setMessage('🎉 Player 1 won! All enemy ships destroyed!')
+        } else {
+          setMessage('🎉 You won! All enemy ships destroyed!')
+        }
         return
       }
     } else {
       newBoard[row][col] = { ...cell, isMiss: true }
       setComputerBoard(newBoard)
-      setMessage('Miss! Computer\'s turn...')
-      setCurrentTurn('computer')
-      setTimeout(computerTurn, 1000)
+      
+      if (gameMode === 'pvp') {
+        setMessage('Miss! Switching to Player 2...')
+        setCurrentTurn('computer')
+        setShowingTransition(true)
+      } else {
+        setMessage('Miss! Computer\'s turn...')
+        setCurrentTurn('computer')
+        setTimeout(computerTurn, 1000)
+      }
     }
   }
 
   const computerTurn = (): void => {
+    // In PvP mode, this is actually Player 2's turn - no auto-play
+    if (gameMode === 'pvp') {
+      return // Player 2 plays manually
+    }
+    
     let row: number, col: number
 
     // Smart targeting: if we have targets in queue, use them
@@ -350,6 +669,46 @@ function App() {
     }
   }
 
+  const handlePlayer2Click = (row: number, col: number, isPlayerBoard: boolean): void => {
+    if (!gameStarted || gameOver || gameMode !== 'pvp') return
+    if (!isPlayerBoard) return // Player 2 can only attack player board
+    if (currentTurn !== 'computer') return // Not Player 2's turn
+
+    const cell = playerBoard[row][col]
+    if (cell.isHit || cell.isMiss) return // Already attacked
+
+    const newBoard = [...playerBoard]
+    const newShips = [...playerShips]
+
+    if (cell.hasShip && cell.shipId !== null) {
+      newBoard[row][col] = { ...cell, isHit: true }
+      const ship = newShips[cell.shipId]
+      ship.hits++
+      
+      if (ship.hits === ship.size) {
+        setMessage(`Player 2 sunk the ${ship.name}!`)
+      } else {
+        setMessage('Hit! Take another shot!')
+      }
+
+      setPlayerBoard(newBoard)
+      setPlayerShips(newShips)
+
+      if (checkWin(newShips)) {
+        setGameOver(true)
+        setWinner('computer')
+        setMessage('🎉 Player 2 won! All enemy ships destroyed!')
+        return
+      }
+    } else {
+      newBoard[row][col] = { ...cell, isMiss: true }
+      setPlayerBoard(newBoard)
+      setMessage('Miss! Switching to Player 1...')
+      setCurrentTurn('player')
+      setShowingTransition(true)
+    }
+  }
+
   const getAdjacentCells = (row: number, col: number, board: Board): Position[] => {
     const adjacent: Position[] = []
     const directions = [
@@ -390,77 +749,205 @@ function App() {
         <div className="turn-indicator">
           {gameStarted && !gameOver && (
             <span className={currentTurn === 'player' ? 'active' : ''}>
-              {currentTurn === 'player' ? '🎯 Your Turn' : '🤖 Computer Turn'}
+              {gameMode === 'pvp' 
+                ? (currentTurn === 'player' ? '🎯 Player 1 Turn' : '🎯 Player 2 Turn')
+                : (currentTurn === 'player' ? '🎯 Your Turn' : '🤖 Computer Turn')
+              }
             </span>
           )}
         </div>
       </div>
 
-      {!gameStarted && !isPlacingManually && (
+      {showingTransition && (
+        <div className="turn-transition">
+          <div className="transition-overlay">
+            <h2>{currentTurn === 'player' ? "Player 1's Turn" : "Player 2's Turn"}</h2>
+            <p>Pass the device to {currentTurn === 'player' ? 'Player 1' : 'Player 2'}</p>
+            <button className="btn-primary" onClick={handleTurnTransition}>
+              Ready
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!gameMode && (
+        <div className="setup-controls">
+          <h2>Select Game Mode</h2>
+          <button className="btn-primary" onClick={() => selectGameMode('pvp')}>
+            👥 Player vs Player (Local)
+          </button>
+          <button className="btn-primary" onClick={() => selectGameMode('online')}>
+            🌐 Online Multiplayer
+          </button>
+          <button className="btn-primary" onClick={() => selectGameMode('pvc')}>
+            🤖 Player vs Computer
+          </button>
+        </div>
+      )}
+
+      {gameMode === 'online' && !multiplayer.gameId && (
+        <div className="setup-controls">
+          <h2>Join or Create Game</h2>
+          <input
+            type="text"
+            placeholder="Enter Game ID (e.g., game123)"
+            value={gameIdInput}
+            onChange={(e) => setGameIdInput(e.target.value)}
+            className="game-id-input"
+            style={{
+              padding: '12px 20px',
+              fontSize: '1.1rem',
+              borderRadius: '10px',
+              border: '2px solid #667eea',
+              marginRight: '10px',
+              minWidth: '250px'
+            }}
+          />
+          <button className="btn-primary" onClick={joinOnlineGame}>
+            Join Game
+          </button>
+          <button className="btn-secondary" onClick={initializeGame}>
+            Back
+          </button>
+          <p style={{ marginTop: '15px', color: '#666' }}>
+            Share this Game ID with your friend to play together!<br/>
+            {multiplayer.playerNumber && `You are Player ${multiplayer.playerNumber}`}
+          </p>
+        </div>
+      )}
+
+      {gameMode && multiplayer.gameId && !gameStarted && !isPlacingManually && (
+        <div className="setup-controls">
+          <p style={{ marginBottom: '15px' }}>
+            <strong>Game ID: {multiplayer.gameId}</strong> | 
+            You are Player {multiplayer.playerNumber} | 
+            {multiplayer.opponentConnected ? ' ✓ Opponent Connected' : ' Waiting for opponent...'}
+          </p>
+          <button className="btn-primary" onClick={startManualPlacement}>
+            Place Ships Manually
+          </button>
+          <button className="btn-primary" onClick={autoPlacePlayerShips}>
+            Auto-Place Ships & Continue
+          </button>
+          <button className="btn-secondary" onClick={initializeGame}>
+            Leave Game
+          </button>
+        </div>
+      )}
+
+      {gameMode && gameMode !== 'online' && !gameStarted && !isPlacingManually && (
         <div className="setup-controls">
           <button className="btn-primary" onClick={startManualPlacement}>
             Place Ships Manually
           </button>
           <button className="btn-primary" onClick={autoPlacePlayerShips}>
-            Auto-Place Ships & Start Game
+            Auto-Place Ships & Continue
+          </button>
+          <button className="btn-secondary" onClick={initializeGame}>
+            Back to Mode Selection
           </button>
         </div>
       )}
 
       {isPlacingManually && (
         <div className="setup-controls">
-          <div className="placement-info">
-            <p>Placing: <strong>{SHIPS[currentShipIndex]?.name} ({SHIPS[currentShipIndex]?.size} cells)</strong></p>
-            <p>Ships placed: {currentShipIndex} / {SHIPS.length}</p>
-          </div>
-          <button className="btn-secondary" onClick={toggleOrientation}>
-            Rotate Ship ({shipOrientation === 'horizontal' ? '→' : '↓'})
-          </button>
+          {gameMode === 'pvp' ? (
+            <>
+              <div className="placement-info">
+                <p><strong>Player 1:</strong> {player1ShipIndex < SHIPS.length ? `${SHIPS[player1ShipIndex]?.name} (${SHIPS[player1ShipIndex]?.size})` : 'Complete!'} - {player1ShipIndex}/{SHIPS.length}</p>
+              </div>
+              <button className="btn-secondary" onClick={togglePlayer1Orientation} disabled={player1ShipIndex >= SHIPS.length}>
+                P1 Rotate ({player1Orientation === 'horizontal' ? '→' : '↓'})
+              </button>
+              <div className="placement-info">
+                <p><strong>Player 2:</strong> {player2ShipIndex < SHIPS.length ? `${SHIPS[player2ShipIndex]?.name} (${SHIPS[player2ShipIndex]?.size})` : 'Complete!'} - {player2ShipIndex}/{SHIPS.length}</p>
+              </div>
+              <button className="btn-secondary" onClick={togglePlayer2Orientation} disabled={player2ShipIndex >= SHIPS.length}>
+                P2 Rotate ({player2Orientation === 'horizontal' ? '→' : '↓'})
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="placement-info">
+                <p>Placing: <strong>{SHIPS[player1ShipIndex]?.name} ({SHIPS[player1ShipIndex]?.size} cells)</strong></p>
+                <p>Ships placed: {player1ShipIndex} / {SHIPS.length}</p>
+              </div>
+              <button className="btn-secondary" onClick={togglePlayer1Orientation}>
+                Rotate Ship ({player1Orientation === 'horizontal' ? '→' : '↓'})
+              </button>
+            </>
+          )}
           <button className="btn-secondary" onClick={initializeGame}>
             Reset
           </button>
         </div>
       )}
 
-      <div className="boards-container">
-        <div className="board-wrapper">
-          <h2>Your Fleet</h2>
-          <GameBoard 
-            board={playerBoard} 
-            onCellClick={handleCellClick}
-            isPlayerBoard={true}
-            hideShips={false}
-            onCellHover={handleBoardHover}
-            onBoardLeave={handleBoardLeave}
-            previewCells={getPreviewCells()}
-            previewValid={previewPosition ? isValidPreview(previewPosition.row, previewPosition.col) : true}
-          />
-          <div className="ships-status">
-            {playerShips.map(ship => (
-              <div key={ship.id} className={ship.hits === ship.size ? 'ship-sunk' : 'ship-alive'}>
-                {ship.name} ({ship.size}) {ship.hits === ship.size && '💀'}
-              </div>
-            ))}
+      {gameMode && (
+        <div className="boards-container">
+          <div className="board-wrapper">
+            <h2>{gameMode === 'online' ? `Your Fleet (Player ${multiplayer.playerNumber})` : gameMode === 'pvp' ? 'Player 1 Fleet' : 'Your Fleet'}</h2>
+            <GameBoard 
+              board={playerBoard} 
+              onCellClick={gameMode === 'pvp' && gameStarted ? handlePlayer2Click : handleCellClick}
+              isPlayerBoard={true}
+              hideShips={gameMode === 'pvp' && currentTurn === 'computer'}
+              onCellHover={handlePlayer1BoardHover}
+              onBoardLeave={handlePlayer1BoardLeave}
+              previewCells={getPlayer1PreviewCells()}
+              previewValid={player1PreviewPosition ? isValidPlayer1Preview(player1PreviewPosition.row, player1PreviewPosition.col) : true}
+            />
+            {(gameMode === 'pvp' || gameMode === 'online') && !gameStarted && playerShips.length === SHIPS.length && (
+              <button 
+                className="btn-primary" 
+                onClick={handlePlayer1Ready}
+                disabled={player1Ready}
+                style={{ marginTop: '15px' }}
+              >
+                {player1Ready ? '✓ Ready!' : 'Ready'}
+              </button>
+            )}
+            <div className="ships-status">
+              {playerShips.map(ship => (
+                <div key={ship.id} className={ship.hits === ship.size ? 'ship-sunk' : 'ship-alive'}>
+                  {ship.name} ({ship.size}) {ship.hits === ship.size && '💀'}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
 
-        <div className="board-wrapper">
-          <h2>Enemy Waters</h2>
-          <GameBoard 
-            board={computerBoard} 
-            onCellClick={handleCellClick}
-            isPlayerBoard={false}
-            hideShips={true}
-          />
-          <div className="ships-status">
-            {computerShips.map(ship => (
-              <div key={ship.id} className={ship.hits === ship.size ? 'ship-sunk' : 'ship-alive'}>
-                {ship.name} ({ship.size}) {ship.hits === ship.size && '💀'}
-              </div>
-            ))}
+          <div className="board-wrapper">
+            <h2>{gameMode === 'online' ? 'Opponent Fleet' : gameMode === 'pvp' ? 'Player 2 Fleet' : 'Enemy Waters'}</h2>
+            <GameBoard 
+              board={computerBoard} 
+              onCellClick={handleCellClick}
+              isPlayerBoard={false}
+              hideShips={gameMode === 'pvp' ? currentTurn === 'player' : true}
+              onCellHover={handlePlayer2BoardHover}
+              onBoardLeave={handlePlayer2BoardLeave}
+              previewCells={getPlayer2PreviewCells()}
+              previewValid={player2PreviewPosition ? isValidPlayer2Preview(player2PreviewPosition.row, player2PreviewPosition.col) : true}
+            />
+            {gameMode === 'pvp' && !gameStarted && computerShips.length === SHIPS.length && (
+              <button 
+                className="btn-primary" 
+                onClick={handlePlayer2Ready}
+                disabled={player2Ready}
+                style={{ marginTop: '15px' }}
+              >
+                {player2Ready ? '✓ Ready!' : 'Ready'}
+              </button>
+            )}
+            <div className="ships-status">
+              {computerShips.map(ship => (
+                <div key={ship.id} className={ship.hits === ship.size ? 'ship-sunk' : 'ship-alive'}>
+                  {ship.name} ({ship.size}) {ship.hits === ship.size && '💀'}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {gameOver && (
         <div className="game-over">

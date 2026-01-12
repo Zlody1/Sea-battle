@@ -70,7 +70,8 @@ const GameBoard = ({
       classes.push('clickable')
     }
 
-    if (isPlayerBoard && isPreviewCell(row, col)) {
+    // Show preview on any board during placement
+    if (isPreviewCell(row, col)) {
       classes.push(previewValid ? 'preview-valid' : 'preview-invalid')
     }
 
