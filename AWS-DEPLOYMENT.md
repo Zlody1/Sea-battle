@@ -64,7 +64,7 @@ npm run build
 ### 7. Start Services
 ```bash
 # Start backend server
-pm2 start server.js --name sea-battle-server
+pm2 start backend/server.js --name sea-battle-server
 
 # Start frontend (serves built files)
 pm2 serve dist 8080 --spa --name sea-battle-frontend

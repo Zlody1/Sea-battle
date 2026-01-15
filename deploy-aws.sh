@@ -29,7 +29,7 @@ fi
 # Start the server with PM2
 echo "🌐 Starting server with PM2..."
 pm2 delete sea-battle-server 2>/dev/null || true
-pm2 start server.js --name sea-battle-server
+pm2 start backend/server.js --name sea-battle-server
 
 # Serve the built frontend with PM2
 echo "🎮 Starting frontend server..."

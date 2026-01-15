@@ -29,7 +29,7 @@ if %ERRORLEVEL% NEQ 0 (
 REM Start the server with PM2
 echo Starting server with PM2...
 call pm2 delete sea-battle-server 2>nul
-call pm2 start server.js --name sea-battle-server
+call pm2 start backend/server.js --name sea-battle-server
 
 REM Serve the built frontend with PM2
 echo Starting frontend server...

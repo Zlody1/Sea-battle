@@ -1,7 +1,56 @@
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { getGameResults, saveGameResult } from './database.js';
 
-const httpServer = createServer();
+const httpServer = createServer(async (req, res) => {
+  // Enable CORS
+  res.setHeader('Access-Control-Allow-Origin', 'http://localhost:5173');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+
+  // GET /api/results - Fetch game results
+  if (req.method === 'GET' && req.url === '/api/results') {
+    try {
+      const results = await getGameResults();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(results));
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to fetch results' }));
+    }
+    return;
+  }
+
+  // POST /api/results - Save game result
+  if (req.method === 'POST' && req.url === '/api/results') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', async () => {
+      try {
+        const result = JSON.parse(body);
+        const results = await saveGameResult(result);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(results));
+      } catch (error) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to save result' }));
+      }
+    });
+    return;
+  }
+
+  res.writeHead(404);
+  res.end('Not found');
+});
+
 const io = new Server(httpServer, {
   cors: {
     origin: "http://localhost:5173",
@@ -15,14 +64,14 @@ const playerSockets = new Map(); // socketId -> {gameId, playerNumber}
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
-  socket.on('joinGame', (gameId) => {
+  socket.on('joinGame', ({ gameId, playerName }) => {
     let game = games.get(gameId);
     
     if (!game) {
       // Create new game
       game = {
         id: gameId,
-        player1: { socketId: socket.id, board: [], ships: [], ready: false },
+        player1: { socketId: socket.id, board: [], ships: [], ready: false, playerName: playerName || 'Player 1' },
         player2: null,
         gameStarted: false,
         currentTurn: 'player1'
@@ -32,18 +81,20 @@ io.on('connection', (socket) => {
       
       socket.join(gameId);
       socket.emit('playerAssigned', { playerNumber: 1, game });
-      console.log(`Player 1 joined game ${gameId}`);
+      console.log(`Player 1 (${playerName}) joined game ${gameId}`);
     } else if (!game.player2) {
       // Join as player 2
-      game.player2 = { socketId: socket.id, board: [], ships: [], ready: false };
+      game.player2 = { socketId: socket.id, board: [], ships: [], ready: false, playerName: playerName || 'Player 2' };
       playerSockets.set(socket.id, { gameId, playerNumber: 2 });
       
       socket.join(gameId);
       socket.emit('playerAssigned', { playerNumber: 2, game });
       
-      // Notify player 1
-      io.to(game.player1.socketId).emit('opponentJoined');
-      console.log(`Player 2 joined game ${gameId}`);
+      // Notify player 1 with player 2's name
+      io.to(game.player1.socketId).emit('opponentJoined', { opponentName: playerName });
+      // Send player 1's name to player 2
+      socket.emit('opponentJoined', { opponentName: game.player1.playerName });
+      console.log(`Player 2 (${playerName}) joined game ${gameId}`);
     } else {
       socket.emit('gameFull');
     }
@@ -97,6 +148,25 @@ io.on('connection', (socket) => {
         if (opponentSocket) {
           io.to(opponentSocket).emit('opponentReady');
         }
+      }
+    }
+  });
+
+  socket.on('updatePlayerName', ({ gameId, playerName }) => {
+    const game = games.get(gameId);
+    const playerInfo = playerSockets.get(socket.id);
+    
+    if (game && playerInfo) {
+      if (playerInfo.playerNumber === 1) {
+        game.player1.playerName = playerName;
+        // Notify player 2
+        if (game.player2?.socketId) {
+          io.to(game.player2.socketId).emit('opponentNameUpdated', { playerName });
+        }
+      } else {
+        game.player2.playerName = playerName;
+        // Notify player 1
+        io.to(game.player1.socketId).emit('opponentNameUpdated', { playerName });
       }
     }
   });
@@ -178,6 +248,25 @@ io.on('connection', (socket) => {
         winner: attackResult.winner
       });
       
+      // Save game result to database if game is over
+      if (allSunk) {
+        const winnerName = playerInfo.playerNumber === 1 ? game.player1.playerName : game.player2.playerName;
+        const loserName = playerInfo.playerNumber === 1 ? game.player2.playerName : game.player1.playerName;
+        
+        const result = {
+          id: Date.now().toString(),
+          date: new Date().toLocaleString(),
+          player1Name: game.player1.playerName,
+          player2Name: game.player2.playerName,
+          winner: winnerName,
+          gameMode: 'online'
+        };
+        
+        saveGameResult(result).catch(err => {
+          console.error('Failed to save game result:', err);
+        });
+      }
+      
       // Switch turns if miss or game over
       if (!isHit || allSunk) {
         game.currentTurn = game.currentTurn === 'player1' ? 'player2' : 'player1';
@@ -199,7 +288,17 @@ io.on('connection', (socket) => {
           : game.player1?.socketId;
         
         if (opponentSocket) {
-          io.to(opponentSocket).emit('opponentDisconnected');
+          // Send different messages based on game state
+          if (game.gameStarted) {
+            io.to(opponentSocket).emit('opponentDisconnected', { 
+              message: 'Opponent disconnected. Game ended.' 
+            });
+          } else {
+            io.to(opponentSocket).emit('opponentDisconnected', { 
+              message: 'Opponent left before the game started.',
+              beforeGameStart: true
+            });
+          }
         }
         
         // Clean up game

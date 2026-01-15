@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import './App.css'
 import GameBoard from './components/GameBoard'
 import { useMultiplayer } from './hooks/useMultiplayer'
+import { saveGameResult, getGameResults, GameResult } from './utils/gameResults'
 
 const GRID_SIZE = 10
 
@@ -71,6 +72,9 @@ function App() {
   // Computer AI states
   const [lastHit, setLastHit] = useState<Position | null>(null)
   const [targetQueue, setTargetQueue] = useState<Position[]>([])
+  
+  // Game results
+  const [gameResults, setGameResults] = useState<GameResult[]>([])
 
   // Suppress unused variable warning - winner and lastHit are set for future use
   void winner
@@ -78,6 +82,8 @@ function App() {
 
   useEffect(() => {
     initializeGame()
+    // Fetch game results from server
+    getGameResults().then(results => setGameResults(results))
   }, [])
 
   // Multiplayer event listeners
@@ -104,6 +110,8 @@ function App() {
         setGameOver(true)
         setWinner('player')
         setMessage('🎉 You won! All enemy ships destroyed!')
+        saveResult(multiplayer.playerName, multiplayer.opponentName)
+        setTimeout(() => initializeGame(), 3000)
       } else if (result.shipSunk) {
         setMessage(`You sunk the ${result.sunkShipName}! Take another shot!`)
       } else if (result.isHit) {
@@ -135,6 +143,8 @@ function App() {
         setGameOver(true)
         setWinner('computer')
         setMessage('💀 Game Over! Opponent won!')
+        saveResult(multiplayer.opponentName, multiplayer.playerName)
+        setTimeout(() => initializeGame(), 3000)
       } else if (result.shipSunk) {
         setMessage(`Opponent sunk your ${result.sunkShipName}!`)
       } else if (result.isHit) {
@@ -179,6 +189,29 @@ function App() {
         shipId: null
       }))
     )
+  }
+
+  const saveResult = async (winnerName: string, loserName: string): Promise<void> => {
+    // Only save for non-online games (online games are saved on server)
+    if (gameMode === 'online') {
+      // Refresh results to show the latest from server
+      const results = await getGameResults();
+      setGameResults(results);
+      return;
+    }
+    
+    const result: GameResult = {
+      id: Date.now().toString(),
+      date: new Date().toLocaleString(),
+      player1Name: winnerName,
+      player2Name: loserName,
+      winner: winnerName,
+      gameMode: gameMode as 'pvp' | 'pvc' | 'online'
+    };
+    
+    await saveGameResult(result);
+    const results = await getGameResults();
+    setGameResults(results);
   }
 
   const initializeGame = (): void => {
@@ -298,6 +331,13 @@ function App() {
         setGameStarted(true)
         setMessage('Game started! Player 1\'s turn - attack Player 2\'s board!')
       }
+    } else if (gameMode === 'online') {
+      // Online mode - place ships and wait for ready
+      setPlayerBoard(result.board)
+      setPlayerShips(result.ships)
+      setMessage(multiplayer.opponentConnected 
+        ? 'Ships placed! Press Ready when ready to start!' 
+        : 'Ships placed! Waiting for opponent to join...')
     } else {
       // PvC mode
       setPlayerBoard(result.board)
@@ -583,9 +623,12 @@ function App() {
         setWinner('player')
         if (gameMode === 'pvp') {
           setMessage('🎉 Player 1 won! All enemy ships destroyed!')
+          saveResult('Player 1', 'Player 2')
         } else {
           setMessage('🎉 You won! All enemy ships destroyed!')
+          saveResult(multiplayer.playerName, 'Computer')
         }
+        setTimeout(() => initializeGame(), 3000)
         return
       }
     } else {
@@ -657,6 +700,8 @@ function App() {
         setGameOver(true)
         setWinner('computer')
         setMessage('💀 Game Over! Computer won!')
+        saveResult('Computer', multiplayer.playerName)
+        setTimeout(() => initializeGame(), 3000)
         return
       }
 
@@ -698,6 +743,8 @@ function App() {
         setGameOver(true)
         setWinner('computer')
         setMessage('🎉 Player 2 won! All enemy ships destroyed!')
+        saveResult('Player 2', 'Player 1')
+        setTimeout(() => initializeGame(), 3000)
         return
       }
     } else {
@@ -744,6 +791,36 @@ function App() {
     <div className="app">
       <h1>⚓ Sea Battle ⚓</h1>
       
+      {/* Player Name Display */}
+      <div className="player-name-section" style={{
+        textAlign: 'center',
+        marginBottom: '20px',
+        padding: '10px',
+        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+        borderRadius: '10px'
+      }}>
+        <label style={{ fontSize: '0.9rem', color: '#666', marginRight: '10px' }}>
+          Your Name:
+        </label>
+        <input
+          type="text"
+          value={multiplayer.playerName}
+          onChange={(e) => multiplayer.updatePlayerName(e.target.value)}
+          placeholder="Enter your name"
+          maxLength={20}
+          style={{
+            padding: '8px 12px',
+            fontSize: '1rem',
+            borderRadius: '8px',
+            border: '2px solid #667eea',
+            backgroundColor: 'white',
+            minWidth: '200px',
+            textAlign: 'center',
+            fontWeight: 'bold'
+          }}
+        />
+      </div>
+      
       <div className="message-box">
         <p className="message">{message}</p>
         <div className="turn-indicator">
@@ -771,18 +848,88 @@ function App() {
       )}
 
       {!gameMode && (
-        <div className="setup-controls">
-          <h2>Select Game Mode</h2>
-          <button className="btn-primary" onClick={() => selectGameMode('pvp')}>
-            👥 Player vs Player (Local)
-          </button>
-          <button className="btn-primary" onClick={() => selectGameMode('online')}>
-            🌐 Online Multiplayer
-          </button>
-          <button className="btn-primary" onClick={() => selectGameMode('pvc')}>
-            🤖 Player vs Computer
-          </button>
-        </div>
+        <>
+          <div className="setup-controls">
+            <h2>Select Game Mode</h2>
+            <button className="btn-primary" onClick={() => selectGameMode('pvp')}>
+              👥 Player vs Player (Local)
+            </button>
+            <button className="btn-primary" onClick={() => selectGameMode('online')}>
+              🌐 Online Multiplayer
+            </button>
+            <button className="btn-primary" onClick={() => selectGameMode('pvc')}>
+              🤖 Player vs Computer
+            </button>
+          </div>
+
+          {/* Game Results Table */}
+          {gameResults.length > 0 && (
+            <div className="game-results" style={{
+              marginTop: '40px',
+              padding: '20px',
+              backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              borderRadius: '15px',
+              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+              maxWidth: '800px',
+              margin: '40px auto 0'
+            }}>
+              <h2 style={{ textAlign: 'center', marginBottom: '20px', color: '#667eea' }}>
+                🏆 Recent Game Results
+              </h2>
+              <table style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontSize: '0.95rem'
+              }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#667eea', color: 'white' }}>
+                    <th style={{ padding: '12px', textAlign: 'left', borderRadius: '8px 0 0 0' }}>Date</th>
+                    <th style={{ padding: '12px', textAlign: 'left' }}>Player 1</th>
+                    <th style={{ padding: '12px', textAlign: 'center' }}>VS</th>
+                    <th style={{ padding: '12px', textAlign: 'left' }}>Player 2</th>
+                    <th style={{ padding: '12px', textAlign: 'left', borderRadius: '0 8px 0 0' }}>Winner</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gameResults.map((result, index) => (
+                    <tr key={result.id} style={{
+                      backgroundColor: index % 2 === 0 ? '#f8f9fa' : 'white',
+                      borderBottom: '1px solid #e0e0e0'
+                    }}>
+                      <td style={{ padding: '10px', fontSize: '0.85rem', color: '#666' }}>
+                        {result.date}
+                      </td>
+                      <td style={{ 
+                        padding: '10px',
+                        fontWeight: result.winner === result.player1Name ? 'bold' : 'normal',
+                        color: result.winner === result.player1Name ? '#667eea' : '#333'
+                      }}>
+                        {result.player1Name}
+                        {result.winner === result.player1Name && ' 👑'}
+                      </td>
+                      <td style={{ padding: '10px', textAlign: 'center', color: '#999' }}>⚔️</td>
+                      <td style={{ 
+                        padding: '10px',
+                        fontWeight: result.winner === result.player2Name ? 'bold' : 'normal',
+                        color: result.winner === result.player2Name ? '#667eea' : '#333'
+                      }}>
+                        {result.player2Name}
+                        {result.winner === result.player2Name && ' 👑'}
+                      </td>
+                      <td style={{ 
+                        padding: '10px',
+                        fontWeight: 'bold',
+                        color: '#667eea'
+                      }}>
+                        {result.winner}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
 
       {gameMode === 'online' && !multiplayer.gameId && (
@@ -820,8 +967,10 @@ function App() {
         <div className="setup-controls">
           <p style={{ marginBottom: '15px' }}>
             <strong>Game ID: {multiplayer.gameId}</strong> | 
-            You are Player {multiplayer.playerNumber} | 
-            {multiplayer.opponentConnected ? ' ✓ Opponent Connected' : ' Waiting for opponent...'}
+            You are {multiplayer.playerName} (Player {multiplayer.playerNumber}) | 
+            {multiplayer.opponentConnected 
+              ? ` ✓ ${multiplayer.opponentName || 'Opponent'} Connected` 
+              : ' Waiting for opponent...'}
           </p>
           <button className="btn-primary" onClick={startManualPlacement}>
             Place Ships Manually
@@ -886,7 +1035,11 @@ function App() {
       {gameMode && (
         <div className="boards-container">
           <div className="board-wrapper">
-            <h2>{gameMode === 'online' ? `Your Fleet (Player ${multiplayer.playerNumber})` : gameMode === 'pvp' ? 'Player 1 Fleet' : 'Your Fleet'}</h2>
+            <h2>
+              {gameMode === 'online' 
+                ? `${multiplayer.playerName}'s Fleet (You)` 
+                : gameMode === 'pvp' ? 'Player 1 Fleet' : 'Your Fleet'}
+            </h2>
             <GameBoard 
               board={playerBoard} 
               onCellClick={gameMode === 'pvp' && gameStarted ? handlePlayer2Click : handleCellClick}
@@ -917,7 +1070,11 @@ function App() {
           </div>
 
           <div className="board-wrapper">
-            <h2>{gameMode === 'online' ? 'Opponent Fleet' : gameMode === 'pvp' ? 'Player 2 Fleet' : 'Enemy Waters'}</h2>
+            <h2>
+              {gameMode === 'online' 
+                ? `${multiplayer.opponentName || 'Opponent'}'s Fleet` 
+                : gameMode === 'pvp' ? 'Player 2 Fleet' : 'Enemy Waters'}
+            </h2>
             <GameBoard 
               board={computerBoard} 
               onCellClick={handleCellClick}
