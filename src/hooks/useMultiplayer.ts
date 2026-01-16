@@ -3,7 +3,11 @@ import { io, Socket } from 'socket.io-client';
 import { getCookie, setCookie } from '../utils/cookies';
 import { generateRandomName } from '../utils/nameGenerator';
 
-const SERVER_URL = 'http://localhost:3001';
+// Automatically detect if running on localhost or production
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const SERVER_URL = isLocalhost 
+  ? 'http://localhost:3001'
+  : 'http://ec2-54-75-57-244.eu-west-1.compute.amazonaws.com:3001';
 
 interface Ship {
   id: number;
