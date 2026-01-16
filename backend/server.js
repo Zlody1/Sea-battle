@@ -3,8 +3,9 @@ import { Server } from 'socket.io';
 import { getGameResults, saveGameResult } from './database.js';
 
 const httpServer = createServer(async (req, res) => {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Origin', 'http://localhost:5173');
+  // Enable CORS - allow both localhost and EC2
+  const origin = req.headers.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -53,8 +54,9 @@ const httpServer = createServer(async (req, res) => {
 
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST"]
+    origin: ["http://localhost:5173", "http://localhost:8080", "http://ec2-54-75-57-244.eu-west-1.compute.amazonaws.com:8080"],
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 

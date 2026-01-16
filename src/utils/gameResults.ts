@@ -7,7 +7,11 @@ export interface GameResult {
   gameMode: 'pvp' | 'pvc' | 'online';
 }
 
-const SERVER_URL = 'http://localhost:3001';
+// Automatically detect if running on localhost or production
+const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const SERVER_URL = isLocalhost 
+  ? 'http://localhost:3001'
+  : 'http://ec2-54-75-57-244.eu-west-1.compute.amazonaws.com:3001';
 
 export const saveGameResult = async (result: GameResult): Promise<void> => {
   try {
