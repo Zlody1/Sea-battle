@@ -1,0 +1,43 @@
+name: CD - Continuous Deployment
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    name: Deploy to Production Server
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ubuntu
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: 22
+          script: |
+            echo "Pulling latest Docker image..."
+            docker pull aandre300/sea-battle:latest
+
+            echo "Stopping existing container..."
+            docker stop sea-battle-app || true
+            docker rm sea-battle-app || true
+
+            echo "Starting new container..."
+            docker run -d \
+              --name sea-battle-app \
+              -p 3002:3002 \
+              -v $(pwd)/backend/data:/app/backend/data \
+              --restart unless-stopped \
+              aandre300/sea-battle:latest
+
+            echo "Deployment complete!"
+            docker ps | grep sea-battle

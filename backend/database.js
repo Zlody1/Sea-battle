@@ -1,12 +1,22 @@
-import { readFile, writeFile } from 'fs/promises';
+import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const DB_FILE = join(__dirname, 'game-results.json');
+const DATA_DIR = join(__dirname, 'data');
+const DB_FILE = join(DATA_DIR, 'game-results.json');
 const MAX_RESULTS = 50;
+
+// Ensure data directory exists
+try {
+  if (!existsSync(DATA_DIR)) {
+    await mkdir(DATA_DIR, { recursive: true });
+  }
+} catch (error) {
+  console.error('Error creating data directory:', error);
+}
 
 export async function getGameResults() {
   try {

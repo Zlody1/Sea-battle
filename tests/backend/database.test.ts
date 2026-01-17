@@ -21,6 +21,23 @@ describe('database', () => {
     // Set up test database file
     TEST_DB_FILE = join(__dirname, 'test-game-results.json');
     
+    // Clean up test files BEFORE tests
+    const testFiles = [
+      TEST_DB_FILE,
+      join(dirname(__dirname), '..', 'backend', 'game-results.json'),
+      join(dirname(__dirname), '..', 'backend', 'data', 'game-results.json')
+    ];
+    
+    testFiles.forEach(file => {
+      if (existsSync(file)) {
+        try {
+          unlinkSync(file);
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+    });
+    
     // Mock the DB_FILE path in the module
     vi.doMock('../../backend/database.js', async () => {
       const actualModule = await vi.importActual('../../backend/database.js');
@@ -33,18 +50,14 @@ describe('database', () => {
     const module = await import('../../backend/database.js');
     getGameResults = module.getGameResults;
     saveGameResult = module.saveGameResult;
-    
-    // Clean up test file if it exists
-    if (existsSync(TEST_DB_FILE)) {
-      unlinkSync(TEST_DB_FILE);
-    }
   });
 
   afterEach(() => {
-    // Clean up test file
+    // Clean up test files
     const testFiles = [
       TEST_DB_FILE,
-      join(dirname(__dirname), '..', 'backend', 'game-results.json')
+      join(dirname(__dirname), '..', 'backend', 'game-results.json'),
+      join(dirname(__dirname), '..', 'backend', 'data', 'game-results.json')
     ];
     
     testFiles.forEach(file => {
