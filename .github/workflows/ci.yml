@@ -29,15 +29,15 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Build Docker image
+        run: |
+          docker build -t sea-battle:test .
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build
           path: dist/
-
-      - name: Build Docker image
-        run: |
-          docker build -t sea-battle:test .
 
       # - name: Test container launch
       #   run: |
