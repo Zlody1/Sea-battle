@@ -789,7 +789,7 @@ function App() {
 
   return (
     <div className="app">
-      <h1>⚓ Sea Battleee ⚓</h1>
+      <h1>⚓ Sea Battle ⚓</h1>
       
       {/* Player Name Display */}
       <div className="player-name-section" style={{
