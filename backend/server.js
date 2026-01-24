@@ -311,7 +311,8 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = 3001;
-httpServer.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const PORT = process.env.PORT || 3001;
+const HOST = '0.0.0.0'; // Listen on all network interfaces
+httpServer.listen(PORT, HOST, () => {
+  console.log(`Server running on ${HOST}:${PORT}`);
 });

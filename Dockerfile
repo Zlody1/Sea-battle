@@ -21,11 +21,11 @@ RUN mkdir -p /app/backend/data
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV PORT=3002
-ENV CLIENT_URL=http://localhost:3002
+ENV PORT=8081
+ENV CLIENT_URL=http://localhost:8081
 
 # Expose ports
-EXPOSE 3002
+EXPOSE 8081
 
 # Start the backend server
 CMD ["node", "backend/server.js"]
