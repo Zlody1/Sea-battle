@@ -84,6 +84,20 @@ function App() {
     initializeGame()
     // Fetch game results from server
     getGameResults().then(results => setGameResults(results))
+    
+    // Check if there's a game ID in the URL
+    const urlParams = new URLSearchParams(window.location.search)
+    const gameIdFromUrl = urlParams.get('game')
+    
+    if (gameIdFromUrl) {
+      setGameMode('online')
+      setGameIdInput(gameIdFromUrl)
+      // Auto-join after a short delay to ensure everything is initialized
+      setTimeout(() => {
+        multiplayer.joinGame(gameIdFromUrl)
+        setMessage(`Joining game ${gameIdFromUrl}... Waiting for opponent...`)
+      }, 500)
+    }
   }, [])
 
   // Multiplayer event listeners
@@ -268,7 +282,25 @@ function App() {
     if (gameIdInput.trim()) {
       multiplayer.joinGame(gameIdInput.trim())
       setMessage(`Joining game ${gameIdInput}... Waiting for opponent...`)
+      
+      // Update URL with game ID
+      const newUrl = `${window.location.origin}${window.location.pathname}?game=${gameIdInput.trim()}`
+      window.history.pushState({}, '', newUrl)
     }
+  }
+
+  const copyGameLink = (): void => {
+    const gameLink = `${window.location.origin}${window.location.pathname}?game=${multiplayer.gameId || gameIdInput.trim()}`
+    navigator.clipboard.writeText(gameLink).then(() => {
+      setMessage('🔗 Game link copied! Share it with your friend!')
+      setTimeout(() => {
+        setMessage(multiplayer.opponentConnected 
+          ? 'Place your ships to get ready!' 
+          : 'Waiting for opponent to join...')
+      }, 2000)
+    }).catch(() => {
+      setMessage('Could not copy link. Share this Game ID: ' + (multiplayer.gameId || gameIdInput.trim()))
+    })
   }
 
   const placeShipsRandomly = (board: Board): { board: Board; ships: Ship[] } => {
@@ -988,13 +1020,49 @@ function App() {
 
       {gameMode && multiplayer.gameId && !gameStarted && !isPlacingManually && (
         <div className="setup-controls">
-          <p style={{ marginBottom: '15px' }}>
-            <strong>Game ID: {multiplayer.gameId}</strong> | 
-            You are {multiplayer.playerName} (Player {multiplayer.playerNumber}) | 
-            {multiplayer.opponentConnected 
-              ? ` ✓ ${multiplayer.opponentName || 'Opponent'} Connected` 
-              : ' Waiting for opponent...'}
-          </p>
+          <div style={{
+            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+            padding: '15px',
+            borderRadius: '10px',
+            marginBottom: '20px'
+          }}>
+            <p style={{ marginBottom: '10px', fontSize: '0.95rem' }}>
+              <strong>Game ID: {multiplayer.gameId}</strong>
+            </p>
+            <p style={{ marginBottom: '10px', fontSize: '0.9rem' }}>
+              You are {multiplayer.playerName} (Player {multiplayer.playerNumber}) | 
+              {multiplayer.opponentConnected 
+                ? ` ✓ ${multiplayer.opponentName || 'Opponent'} Connected` 
+                : ' ⏳ Waiting for opponent...'}
+            </p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', alignItems: 'center' }}>
+              <input
+                type="text"
+                readOnly
+                value={`${window.location.origin}${window.location.pathname}?game=${multiplayer.gameId}`}
+                style={{
+                  padding: '10px',
+                  fontSize: '0.9rem',
+                  borderRadius: '8px',
+                  border: '2px solid #667eea',
+                  backgroundColor: 'white',
+                  flex: 1,
+                  maxWidth: '500px'
+                }}
+                onClick={(e) => e.currentTarget.select()}
+              />
+              <button 
+                className="btn-primary" 
+                onClick={copyGameLink}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                📋 Copy Link
+              </button>
+            </div>
+            <p style={{ marginTop: '10px', fontSize: '0.85rem', color: '#666' }}>
+              Share this link with your friend to play together!
+            </p>
+          </div>
           <button className="btn-primary" onClick={startManualPlacement}>
             Place Ships Manually
           </button>
