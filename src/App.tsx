@@ -300,17 +300,40 @@ function App() {
   }
 
   const canPlaceShip = (board: Board, row: number, col: number, size: number, horizontal: boolean): boolean => {
+    // Check if ship fits on board
     if (horizontal) {
       if (col + size > GRID_SIZE) return false
-      for (let i = 0; i < size; i++) {
-        if (board[row][col + i].hasShip) return false
-      }
     } else {
       if (row + size > GRID_SIZE) return false
-      for (let i = 0; i < size; i++) {
-        if (board[row + i][col].hasShip) return false
+    }
+
+    // Check ship cells and surrounding area (including diagonals)
+    for (let i = 0; i < size; i++) {
+      const r = horizontal ? row : row + i
+      const c = horizontal ? col + i : col
+
+      // Check the ship cell itself
+      if (board[r][c].hasShip) return false
+
+      // Check all 8 surrounding cells
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const checkRow = r + dr
+          const checkCol = c + dc
+          
+          // Skip if out of bounds
+          if (checkRow < 0 || checkRow >= GRID_SIZE || checkCol < 0 || checkCol >= GRID_SIZE) {
+            continue
+          }
+          
+          // Check if surrounding cell has a ship
+          if (board[checkRow][checkCol].hasShip) {
+            return false
+          }
+        }
       }
     }
+    
     return true
   }
 
