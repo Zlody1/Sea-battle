@@ -34,7 +34,10 @@ jobs:
             echo "Starting new container..."
             docker run -d \
               --name sea-battle-app \
-              -p 8081:8080 \
+              -p 8081:8081 \
+              -e PORT=8081 \
+              -e NODE_ENV=production \
+              -e CLIENT_URL=http://ec2-54-75-57-244.eu-west-1.compute.amazonaws.com:8081 \
               -v $(pwd)/backend/data:/app/backend/data \
               --restart unless-stopped \
               aandre300/sea-battle:latest
