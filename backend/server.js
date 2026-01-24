@@ -1,6 +1,12 @@
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { getGameResults, saveGameResult } from './database.js';
+import { readFile } from 'fs/promises';
+import { join, extname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = join(__filename, '..');
 
 const httpServer = createServer(async (req, res) => {
   // Enable CORS - allow both localhost and EC2
@@ -48,13 +54,47 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
-  res.writeHead(404);
-  res.end('Not found');
+  // Serve static files from dist folder
+  try {
+    const distPath = join(__dirname, '..', 'dist');
+    let filePath = join(distPath, req.url === '/' ? 'index.html' : req.url);
+    
+    // If file doesn't have extension, try .html
+    if (!extname(filePath)) {
+      filePath += '.html';
+    }
+    
+    const content = await readFile(filePath);
+    const ext = extname(filePath);
+    const contentTypes = {
+      '.html': 'text/html',
+      '.js': 'application/javascript',
+      '.css': 'text/css',
+      '.json': 'application/json',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.svg': 'image/svg+xml',
+    };
+    
+    res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'text/plain' });
+    res.end(content);
+  } catch (error) {
+    // If file not found, try serving index.html for SPA routing
+    try {
+      const indexPath = join(__dirname, '..', 'dist', 'index.html');
+      const content = await readFile(indexPath);
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(content);
+    } catch {
+      res.writeHead(404);
+      res.end('Not found');
+    }
+  }
 });
 
 const io = new Server(httpServer, {
   cors: {
-    origin: ["http://localhost:5173", "http://localhost:8080", "http://ec2-54-75-57-244.eu-west-1.compute.amazonaws.com:8080"],
+    origin: ["http://localhost:5173", "http://localhost:8080", "http://localhost:8081", "http://ec2-54-75-57-244.eu-west-1.compute.amazonaws.com:8080", "http://ec2-54-75-57-244.eu-west-1.compute.amazonaws.com:8081"],
     methods: ["GET", "POST"],
     credentials: true
   }
