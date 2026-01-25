@@ -85,13 +85,12 @@ function App() {
     // Fetch game results from server
     getGameResults().then(results => setGameResults(results))
     
-    // Check if there's a game ID in the URL (only on initial load, not on reload)
+    // Check if there's a game ID in the URL
     const urlParams = new URLSearchParams(window.location.search)
     const gameIdFromUrl = urlParams.get('game')
     
-    // Only auto-join if there's a game ID and user hasn't been here before in this session
-    if (gameIdFromUrl && !sessionStorage.getItem('hasVisited')) {
-      sessionStorage.setItem('hasVisited', 'true')
+    // Auto-join if there's a game ID in URL
+    if (gameIdFromUrl) {
       setGameMode('online')
       setGameIdInput(gameIdFromUrl)
       // Auto-join after a short delay to ensure everything is initialized
@@ -99,9 +98,6 @@ function App() {
         multiplayer.joinGame(gameIdFromUrl)
         setMessage(`Joining game ${gameIdFromUrl}... Waiting for opponent...`)
       }, 500)
-    } else {
-      // Clear URL on reload or subsequent visits
-      window.history.replaceState({}, '', window.location.pathname)
     }
   }, [])
 
@@ -260,12 +256,11 @@ function App() {
     setPlayer1Ready(false)
     setPlayer2Ready(false)
     
-    // Clear URL and session when leaving game
+    // Clear URL when resetting game
     window.history.replaceState({}, '', window.location.pathname)
-    sessionStorage.removeItem('hasVisited')
     
     // Disconnect from multiplayer if connected
-    if (multiplayer.socket) {
+    if (multiplayer.socket && multiplayer.socket.connected) {
       multiplayer.socket.disconnect()
     }
   }
@@ -304,18 +299,38 @@ function App() {
   }
 
   const copyGameLink = (): void => {
+    const gameLink = `$async (): Promise<void> => {
     const gameLink = `${window.location.origin}${window.location.pathname}?game=${multiplayer.gameId || gameIdInput.trim()}`
-    navigator.clipboard.writeText(gameLink).then(() => {
-      setMessage('🔗 Game link copied! Share it with your friend!')
+    
+    try {
+      await navigator.clipboard.writeText(gameLink)
+      setMessage('🔗 Game link copied to clipboard! Share it with your friend!')
       setTimeout(() => {
         setMessage(multiplayer.opponentConnected 
           ? 'Place your ships to get ready!' 
           : 'Waiting for opponent to join...')
       }, 2000)
-    }).catch(() => {
-      setMessage('Could not copy link. Share this Game ID: ' + (multiplayer.gameId || gameIdInput.trim()))
-    })
-  }
+    } catch (error) {
+      // Fallback for browsers that don't support clipboard API
+      const textArea = document.createElement('textarea')
+      textArea.value = gameLink
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-999999px'
+      document.body.appendChild(textArea)
+      textArea.select()
+      try {
+        document.execCommand('copy')
+        setMessage('🔗 Game link copied! Share it with your friend!')
+        setTimeout(() => {
+          setMessage(multiplayer.opponentConnected 
+            ? 'Place your ships to get ready!' 
+            : 'Waiting for opponent to join...')
+        }, 2000)
+      } catch (err) {
+        setMessage('Could not copy link. Share this Game ID: ' + (multiplayer.gameId || gameIdInput.trim()))
+      }
+      document.body.removeChild(textArea)
+    }
 
   const placeShipsRandomly = (board: Board): { board: Board; ships: Ship[] } => {
     const ships: Ship[] = []
