@@ -298,8 +298,7 @@ function App() {
     }
   }
 
-  const copyGameLink = (): void => {
-    const gameLink = `$async (): Promise<void> => {
+  const copyGameLink = async (): Promise<void> => {
     const gameLink = `${window.location.origin}${window.location.pathname}?game=${multiplayer.gameId || gameIdInput.trim()}`
     
     try {
@@ -331,6 +330,8 @@ function App() {
       }
       document.body.removeChild(textArea)
     }
+  }
+
 
   const placeShipsRandomly = (board: Board): { board: Board; ships: Ship[] } => {
     const ships: Ship[] = []
