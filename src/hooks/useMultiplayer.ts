@@ -6,8 +6,8 @@ import { generateRandomName } from '../utils/nameGenerator';
 // Automatically detect if running on localhost or production
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const SERVER_URL = isLocalhost 
-  ? 'http://localhost:3001'
-  : 'http://ec2-54-75-57-244.eu-west-1.compute.amazonaws.com:3001';
+  ? 'http://localhost:8081'
+  : `http://${window.location.hostname}:${window.location.port || 8081}`;
 
 interface Ship {
   id: number;
