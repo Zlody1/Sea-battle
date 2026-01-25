@@ -201,16 +201,39 @@ function App() {
       setCurrentTurn(isMyTurn ? 'player' : 'computer')
     }
 
+    const handleOpponentDisconnected = ({ message, beforeGameStart, gameEnded }: any) => {
+      if (gameEnded) {
+        // Game is completely closed (Player 1 left)
+        alert(message || 'Game closed.')
+        initializeGame()
+      } else {
+        // Player 2 left, but game stays open for Player 1
+        alert(message || 'Opponent disconnected.')
+        
+        // Reset to waiting state
+        setComputerBoard(createEmptyBoard())
+        setComputerShips([])
+        setGameStarted(false)
+        setPlayer2Ready(false)
+        
+        if (beforeGameStart) {
+          setMessage('Waiting for new opponent to join...')
+        }
+      }
+    }
+
     multiplayer.socket.on('gameStarted', handleGameStarted)
     multiplayer.socket.on('attackResult', handleAttackResult)
     multiplayer.socket.on('attacked', handleAttacked)
     multiplayer.socket.on('turnChanged', handleTurnChanged)
+    multiplayer.socket.on('opponentDisconnected', handleOpponentDisconnected)
 
     return () => {
       multiplayer.socket?.off('gameStarted', handleGameStarted)
       multiplayer.socket?.off('attackResult', handleAttackResult)
       multiplayer.socket?.off('attacked', handleAttacked)
       multiplayer.socket?.off('turnChanged', handleTurnChanged)
+      multiplayer.socket?.off('opponentDisconnected', handleOpponentDisconnected)
     }
   }, [multiplayer.socket, gameMode, computerBoard, playerBoard, playerShips, multiplayer.playerNumber])
 

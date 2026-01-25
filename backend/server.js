@@ -324,27 +324,44 @@ io.on('connection', (socket) => {
     if (playerInfo) {
       const game = games.get(playerInfo.gameId);
       if (game) {
-        // Notify opponent
-        const opponentSocket = playerInfo.playerNumber === 1 
-          ? game.player2?.socketId 
-          : game.player1?.socketId;
+        const isPlayer1 = playerInfo.playerNumber === 1;
         
-        if (opponentSocket) {
-          // Send different messages based on game state
-          if (game.gameStarted) {
+        // If Player 1 disconnects, close the game entirely
+        if (isPlayer1) {
+          const opponentSocket = game.player2?.socketId;
+          if (opponentSocket) {
             io.to(opponentSocket).emit('opponentDisconnected', { 
-              message: 'Opponent disconnected. Game ended.' 
-            });
-          } else {
-            io.to(opponentSocket).emit('opponentDisconnected', { 
-              message: 'Opponent left before the game started.',
-              beforeGameStart: true
+              message: game.gameStarted ? 'Host disconnected. Game ended.' : 'Host left. Game closed.',
+              gameEnded: true
             });
           }
+          // Delete the game
+          games.delete(playerInfo.gameId);
+          console.log(`Game ${playerInfo.gameId} closed - Player 1 (host) left`);
+        } 
+        // If Player 2 disconnects, keep the game open for Player 1
+        else {
+          const player1Socket = game.player1?.socketId;
+          if (player1Socket) {
+            io.to(player1Socket).emit('opponentDisconnected', { 
+              message: game.gameStarted ? 'Opponent disconnected. Waiting for new player...' : 'Opponent left. Waiting for new player...',
+              beforeGameStart: !game.gameStarted,
+              gameEnded: false
+            });
+          }
+          
+          // Reset Player 2 slot but keep the game
+          game.player2 = null;
+          game.gameStarted = false;
+          game.currentTurn = 'player1';
+          
+          // Reset Player 1's ready state
+          if (game.player1) {
+            game.player1.ready = false;
+          }
+          
+          console.log(`Player 2 left game ${playerInfo.gameId} - Game remains open for Player 1`);
         }
-        
-        // Clean up game
-        games.delete(playerInfo.gameId);
       }
       playerSockets.delete(socket.id);
     }
