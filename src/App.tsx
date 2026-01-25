@@ -81,19 +81,45 @@ function App() {
   void lastHit
 
   useEffect(() => {
-    initializeGame()
     // Fetch game results from server
     getGameResults().then(results => setGameResults(results))
     
-    // Check if there's a game ID in the URL
+    // Check if there's a game ID in the URL BEFORE initializing
     const urlParams = new URLSearchParams(window.location.search)
     const gameIdFromUrl = urlParams.get('game')
     
-    // Auto-join if there's a game ID in URL
-    if (gameIdFromUrl) {
+    // Initialize game (but don't clear URL if there's a game param)
+    if (!gameIdFromUrl) {
+      initializeGame()
+    } else {
+      // Initialize game state without clearing URL
+      const newPlayerBoard = createEmptyBoard()
+      const newComputerBoard = createEmptyBoard()
+      
+      setPlayerBoard(newPlayerBoard)
+      setComputerBoard(newComputerBoard)
+      setPlayerShips([])
+      setComputerShips([])
+      setGameStarted(false)
+      setGameOver(false)
+      setWinner(null)
+      setCurrentTurn('player')
+      setIsPlacingManually(false)
+      setPlayer1ShipIndex(0)
+      setPlayer2ShipIndex(0)
+      setPlayer1Orientation('horizontal')
+      setPlayer2Orientation('horizontal')
+      setPlayer1PreviewPosition(null)
+      setPlayer2PreviewPosition(null)
+      setLastHit(null)
+      setTargetQueue([])
+      setShowingTransition(false)
+      setPlayer1Ready(false)
+      setPlayer2Ready(false)
+      
+      // Auto-join the game
       setGameMode('online')
       setGameIdInput(gameIdFromUrl)
-      // Auto-join after a short delay to ensure everything is initialized
       setTimeout(() => {
         multiplayer.joinGame(gameIdFromUrl)
         setMessage(`Joining game ${gameIdFromUrl}... Waiting for opponent...`)
