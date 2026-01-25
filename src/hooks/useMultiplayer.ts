@@ -131,6 +131,19 @@ export const useMultiplayer = () => {
     }
   }, [socket, gameId, isMultiplayerMode]);
 
+  const resetMultiplayer = useCallback(() => {
+    setGameId('');
+    setIsMultiplayerMode(false);
+    setPlayerNumber(null);
+    setOpponentConnected(false);
+    setOpponentReady(false);
+    setOpponentShipsPlaced(0);
+    setOpponentName('');
+    if (socket && socket.connected) {
+      socket.disconnect();
+    }
+  }, [socket]);
+
   return {
     socket,
     playerNumber,
@@ -146,6 +159,7 @@ export const useMultiplayer = () => {
     setReady,
     sendAttack,
     setIsMultiplayerMode,
-    updatePlayerName
+    updatePlayerName,
+    resetMultiplayer
   };
 };

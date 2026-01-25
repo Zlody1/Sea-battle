@@ -285,10 +285,8 @@ function App() {
     // Clear URL when resetting game
     window.history.replaceState({}, '', window.location.pathname)
     
-    // Disconnect from multiplayer if connected
-    if (multiplayer.socket && multiplayer.socket.connected) {
-      multiplayer.socket.disconnect()
-    }
+    // Reset multiplayer state completely
+    multiplayer.resetMultiplayer()
   }
 
   const selectGameMode = (mode: GameMode): void => {
