@@ -85,11 +85,13 @@ function App() {
     // Fetch game results from server
     getGameResults().then(results => setGameResults(results))
     
-    // Check if there's a game ID in the URL
+    // Check if there's a game ID in the URL (only on initial load, not on reload)
     const urlParams = new URLSearchParams(window.location.search)
     const gameIdFromUrl = urlParams.get('game')
     
-    if (gameIdFromUrl) {
+    // Only auto-join if there's a game ID and user hasn't been here before in this session
+    if (gameIdFromUrl && !sessionStorage.getItem('hasVisited')) {
+      sessionStorage.setItem('hasVisited', 'true')
       setGameMode('online')
       setGameIdInput(gameIdFromUrl)
       // Auto-join after a short delay to ensure everything is initialized
@@ -97,6 +99,9 @@ function App() {
         multiplayer.joinGame(gameIdFromUrl)
         setMessage(`Joining game ${gameIdFromUrl}... Waiting for opponent...`)
       }, 500)
+    } else {
+      // Clear URL on reload or subsequent visits
+      window.history.replaceState({}, '', window.location.pathname)
     }
   }, [])
 
@@ -254,6 +259,15 @@ function App() {
     setShowingTransition(false)
     setPlayer1Ready(false)
     setPlayer2Ready(false)
+    
+    // Clear URL and session when leaving game
+    window.history.replaceState({}, '', window.location.pathname)
+    sessionStorage.removeItem('hasVisited')
+    
+    // Disconnect from multiplayer if connected
+    if (multiplayer.socket) {
+      multiplayer.socket.disconnect()
+    }
   }
 
   const selectGameMode = (mode: GameMode): void => {
