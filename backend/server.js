@@ -326,41 +326,56 @@ io.on('connection', (socket) => {
       if (game) {
         const isPlayer1 = playerInfo.playerNumber === 1;
         
-        // If Player 1 disconnects, close the game entirely
-        if (isPlayer1) {
-          const opponentSocket = game.player2?.socketId;
+        // If game has started, any player leaving ends the game for both
+        if (game.gameStarted) {
+          const opponentSocket = isPlayer1 ? game.player2?.socketId : game.player1?.socketId;
           if (opponentSocket) {
             io.to(opponentSocket).emit('opponentDisconnected', { 
-              message: game.gameStarted ? 'Host disconnected. Game ended.' : 'Host left. Game closed.',
+              message: 'Opponent disconnected. Game ended.',
               gameEnded: true
             });
           }
           // Delete the game
           games.delete(playerInfo.gameId);
-          console.log(`Game ${playerInfo.gameId} closed - Player 1 (host) left`);
-        } 
-        // If Player 2 disconnects, keep the game open for Player 1
+          console.log(`Game ${playerInfo.gameId} ended - player left during active game`);
+        }
+        // If game hasn't started yet
         else {
-          const player1Socket = game.player1?.socketId;
-          if (player1Socket) {
-            io.to(player1Socket).emit('opponentDisconnected', { 
-              message: game.gameStarted ? 'Opponent disconnected. Waiting for new player...' : 'Opponent left. Waiting for new player...',
-              beforeGameStart: !game.gameStarted,
-              gameEnded: false
-            });
+          // If Player 1 (host) disconnects, close the game entirely
+          if (isPlayer1) {
+            const opponentSocket = game.player2?.socketId;
+            if (opponentSocket) {
+              io.to(opponentSocket).emit('opponentDisconnected', { 
+                message: 'Host left. Game closed.',
+                gameEnded: true
+              });
+            }
+            // Delete the game
+            games.delete(playerInfo.gameId);
+            console.log(`Game ${playerInfo.gameId} closed - Player 1 (host) left before game started`);
+          } 
+          // If Player 2 disconnects before game starts, keep the game open for Player 1
+          else {
+            const player1Socket = game.player1?.socketId;
+            if (player1Socket) {
+              io.to(player1Socket).emit('opponentDisconnected', { 
+                message: 'Opponent left. Waiting for new player...',
+                beforeGameStart: true,
+                gameEnded: false
+              });
+            }
+            
+            // Reset Player 2 slot but keep the game
+            game.player2 = null;
+            game.currentTurn = 'player1';
+            
+            // Reset Player 1's ready state
+            if (game.player1) {
+              game.player1.ready = false;
+            }
+            
+            console.log(`Player 2 left game ${playerInfo.gameId} before start - Game remains open for Player 1`);
           }
-          
-          // Reset Player 2 slot but keep the game
-          game.player2 = null;
-          game.gameStarted = false;
-          game.currentTurn = 'player1';
-          
-          // Reset Player 1's ready state
-          if (game.player1) {
-            game.player1.ready = false;
-          }
-          
-          console.log(`Player 2 left game ${playerInfo.gameId} - Game remains open for Player 1`);
         }
       }
       playerSockets.delete(socket.id);
